@@ -83,6 +83,7 @@ class DenseNet:
 
         self.use_lap = kwargs['use_lap']
         self.use_sdr = kwargs['use_sdr']
+        self.gpu = int(kwargs['gpu'])
         assert not (self.use_lap and self.use_sdr), 'illegal inputs use_lap or use_sdr'
         self.beta, self.zeta = 0.1, 0.01
         self.data_dir = '/data/dilin/densenet'
@@ -102,7 +103,7 @@ class DenseNet:
 
         # restrict model GPU memory utilization to min required
         config.gpu_options.allow_growth = True
-        config.device_count={'GPU': 4}
+        config.gpu_options.visible_device_list = '%d' % self.gpu
 
         self.sess = tf.Session(config=config)
         tf_ver = int(tf.__version__.split('.')[1])

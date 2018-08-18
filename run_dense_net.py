@@ -54,6 +54,9 @@ if __name__ == '__main__':
         default=12,
         help='Grows rate for every layer, '
              'choices were restricted to used in paper')
+
+    parser.add_argument( '--gpu', '-gpu', type=int, choices=[0, 1, 2, 3], default=0, help='gpu')
+
     parser.add_argument(
         '--depth', '-d', type=int, choices=[40, 100, 190, 250],
         default=40,
