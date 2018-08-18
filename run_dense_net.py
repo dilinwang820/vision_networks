@@ -106,11 +106,15 @@ if __name__ == '__main__':
         '--num_inter_threads', '-inter', type=int, default=1, metavar='',
         help='number of inter threads for inference / test')
     parser.add_argument(
-        '--num_intra_threads', '-intra', type=int, default=128, metavar='',
+        '--num_intra_threads', '-intra', type=int, default=12, metavar='',
         help='number of intra threads for inference / test')
-    
+
+    parser.add_argument(
+        '--lap', dest='use_lap', action='store_true',
+        help='Use Lap approx instead of dropout.')
     
     parser.set_defaults(renew_logs=True)
+    parser.set_defaults(use_lap=False)
 
     args = parser.parse_args()
 
@@ -119,6 +123,10 @@ if __name__ == '__main__':
             args.keep_prob = 0.8
         else:
             args.keep_prob = 1.0
+
+    if args.use_lap:
+        args.keep_prob = 1.0
+
     if args.model_type == 'DenseNet':
         args.bc_mode = False
         args.reduction = 1.0

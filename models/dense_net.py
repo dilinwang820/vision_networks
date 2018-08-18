@@ -82,6 +82,7 @@ class DenseNet:
         self.batches_step = 0
 
         self.use_lap = kwargs['use_lap']
+        self.data_dir = '/data/dilin/densenet'
         self.zeta = 0.001
         self._define_inputs()
         self._build_graph()
@@ -125,6 +126,8 @@ class DenseNet:
             save_path = self._save_path
         except AttributeError:
             save_path = 'saves/%s' % self.model_identifier
+            if self.data_dir is not None:
+                save_path = os.path.join(self.data_dir, save_path)
             os.makedirs(save_path, exist_ok=True)
             save_path = os.path.join(save_path, 'model.chkpt')
             self._save_path = save_path
@@ -136,6 +139,8 @@ class DenseNet:
             logs_path = self._logs_path
         except AttributeError:
             logs_path = 'logs/%s' % self.model_identifier
+            if self.data_dir is not None:
+                logs_path = os.path.join(self.data_dir, logs_path)
             if self.renew_logs:
                 shutil.rmtree(logs_path, ignore_errors=True)
             os.makedirs(logs_path, exist_ok=True)
@@ -144,8 +149,12 @@ class DenseNet:
 
     @property
     def model_identifier(self):
-        return "{}_growth_rate={}_depth={}_dataset_{}".format(
-            self.model_type, self.growth_rate, self.depth, self.dataset_name)
+        if self.use_lap:
+            return "LAP_{}_growth_rate={}_depth={}_dataset_{}".format(
+                self.model_type, self.growth_rate, self.depth, self.dataset_name)
+        else:
+            return "ORI_{}_growth_rate={}_depth={}_dataset_{}".format(
+                self.model_type, self.growth_rate, self.depth, self.dataset_name)
 
     def save_model(self, global_step=None):
         self.saver.save(self.sess, self.save_path, global_step=global_step)
@@ -162,8 +171,8 @@ class DenseNet:
     def log_loss_accuracy(self, loss, accuracy, epoch, prefix,
                           should_print=True):
         if should_print:
-            print("mean cross_entropy: %f, mean accuracy: %f" % (
-                loss, accuracy))
+            print("%s, mean cross_entropy: %f, mean accuracy: %f" % (
+                prefix, loss, accuracy))
         summary = tf.Summary(value=[
             tf.Summary.Value(
                 tag='loss_%s' % prefix, simple_value=float(loss)),
@@ -366,7 +375,7 @@ class DenseNet:
             self.learning_rate, self.nesterov_momentum, use_nesterov=True)
 
         if self.use_lap:
-            grads_and_vars = self.optimizer.compute_gradients(
+            grads_and_vars = optimizer.compute_gradients(
                 cross_entropy + l2_loss * self.weight_decay)
 
             vars_with_grad = [v for g, v in grads_and_vars if g is not None]
@@ -387,7 +396,7 @@ class DenseNet:
                 #for var in tf.trainable_variables():
                 #    tf.summary.histogram('post_lap_weights_' + var.name, var)
 
-            self.train_step = self.optimizer.apply_gradients(grads_and_vars_lap)
+            self.train_step = optimizer.apply_gradients(grads_and_vars_lap)
         
         else:
             self.train_step = optimizer.minimize(
