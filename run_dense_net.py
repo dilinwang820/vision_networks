@@ -112,9 +112,14 @@ if __name__ == '__main__':
     parser.add_argument(
         '--lap', dest='use_lap', action='store_true',
         help='Use Lap approx instead of dropout.')
-    
+
+    parser.add_argument(
+        '--sdr', dest='use_sdr', action='store_true',
+        help='Use Stochastic Delta Rule instead of dropout.')
+
     parser.set_defaults(renew_logs=True)
     parser.set_defaults(use_lap=False)
+    parser.set_defaults(use_sdr=False)
 
     args = parser.parse_args()
 
@@ -124,7 +129,7 @@ if __name__ == '__main__':
         else:
             args.keep_prob = 1.0
 
-    if args.use_lap:
+    if args.use_lap or args.use_sdr:
         args.keep_prob = 1.0
 
     if args.model_type == 'DenseNet':

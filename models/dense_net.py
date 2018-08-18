@@ -82,8 +82,11 @@ class DenseNet:
         self.batches_step = 0
 
         self.use_lap = kwargs['use_lap']
+        self.use_sdr = kwargs['use_sdr']
+        assert not (self.use_lap and self.use_sdr), 'illegal inputs use_lap or use_sdr'
+        self.beta, self.zeta = 0.1, 0.01
         self.data_dir = '/data/dilin/densenet'
-        self.zeta = 0.001
+        self.alpha = 0.001
         self._define_inputs()
         self._build_graph()
         self._initialize_session()
@@ -149,7 +152,11 @@ class DenseNet:
 
     @property
     def model_identifier(self):
-        if self.use_lap:
+
+        if self.use_sdr:
+            return "SDR_{}_growth_rate={}_depth={}_dataset_{}".format(
+                self.model_type, self.growth_rate, self.depth, self.dataset_name)
+        elif self.use_lap:
             return "LAP_{}_growth_rate={}_depth={}_dataset_{}".format(
                 self.model_type, self.growth_rate, self.depth, self.dataset_name)
         else:
@@ -363,44 +370,86 @@ class DenseNet:
         prediction = tf.nn.softmax(logits)
 
         # Losses
+        if self.use_sdr:
+            with tf.variable_scope("means_sd") as m_sd:
+                sds_ = [tf.get_variable("sds_" + str(k),
+                    initializer=tf.random_uniform(v.shape, minval=0, maxval=0), trainable=False)
+                    for k, v in enumerate(tf.trainable_variables())]
+                #trains = [v for v in tf.trainable_variables()]
+                self.apply_ = []
+                for k in range(len(tf.trainable_variables())):
+                    dist = tf.distributions.Normal(
+                        loc=tf.trainable_variables()[k], scale=sds_[k])
+                    new_trainable = tf.reshape(dist.sample([1]),
+                        tf.trainable_variables()[k].shape)
+                    
+                    self.apply_.append(tf.assign(tf.trainable_variables()[k],
+                        new_trainable))
 
-        cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
-            logits=logits, labels=self.labels))
-        self.cross_entropy = cross_entropy
-        l2_loss = tf.add_n(
-            [tf.nn.l2_loss(var) for var in tf.trainable_variables()])
+            # Losses
+            cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+                logits=logits, labels=self.labels))
+            self.cross_entropy = cross_entropy
 
-        # optimizer and train step
-        optimizer = tf.train.MomentumOptimizer(
-            self.learning_rate, self.nesterov_momentum, use_nesterov=True)
+            l2_loss = tf.add_n(
+                [tf.nn.l2_loss(var) for var in tf.trainable_variables()])
 
-        if self.use_lap:
+
+            optimizer = tf.train.MomentumOptimizer(
+                self.learning_rate, self.nesterov_momentum, use_nesterov=True)
+            
             grads_and_vars = optimizer.compute_gradients(
                 cross_entropy + l2_loss * self.weight_decay)
 
-            vars_with_grad = [v for g, v in grads_and_vars if g is not None]
-            if not vars_with_grad:
-              raise ValueError(
-                "No gradients provided for any variable, check your graph for ops"
-                " that do not support gradients, between variables %s and loss %s." %
-                ([str(v) for _, v in grads_and_vars], l2_loss))
-
-            grads_and_vars_lap = []
-            with tf.variable_scope('m_lap'):
+            self.sd_asn_ = []
+            with tf.variable_scope(m_sd.original_name_scope):
                 for k, (g, v) in enumerate(grads_and_vars):
-
-                    noise = tf.random_normal(shape=g.get_shape(), mean=0.0, stddev=1.0)
-                    g_lap = g + self.zeta * tf.abs(g) * noise
-                    grads_and_vars_lap.append((g_lap, v))
+    
+                    sd_tmp = tf.multiply(tf.constant(
+                        self.zeta, dtype=tf.float32), tf.add(
+                        tf.abs(tf.multiply(tf.constant(self.beta,
+                        dtype=tf.float32), g)), sds_[k]))
+                    self.sd_asn_.append(tf.assign(sds_[k], sd_tmp))
 
                 #for var in tf.trainable_variables():
-                #    tf.summary.histogram('post_lap_weights_' + var.name, var)
+                #    tf.summary.histogram('post_sdr_weights_' + var.name, var)
+                
+            self.train_step = optimizer.apply_gradients(
+                grads_and_vars)
 
-            self.train_step = optimizer.apply_gradients(grads_and_vars_lap)
-        
         else:
-            self.train_step = optimizer.minimize(
-                cross_entropy + l2_loss * self.weight_decay)
+            # lap gradients or original gradients
+            cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
+                logits=logits, labels=self.labels))
+            self.cross_entropy = cross_entropy
+            l2_loss = tf.add_n(
+                [tf.nn.l2_loss(var) for var in tf.trainable_variables()])
+
+            # optimizer and train step
+            optimizer = tf.train.MomentumOptimizer(
+                self.learning_rate, self.nesterov_momentum, use_nesterov=True)
+
+
+            if self.use_lap:
+                grads_and_vars = optimizer.compute_gradients(
+                    cross_entropy + l2_loss * self.weight_decay)
+
+                grads_and_vars_lap = []
+                with tf.variable_scope('m_lap'):
+                    for k, (g, v) in enumerate(grads_and_vars):
+
+                        noise = tf.random_normal(shape=g.get_shape(), mean=0.0, stddev=1.0)
+                        g_lap = g + self.alpha * tf.abs(g) * noise
+                        grads_and_vars_lap.append((g_lap, v))
+
+                    #for var in tf.trainable_variables():
+                    #    tf.summary.histogram('post_lap_weights_' + var.name, var)
+
+                self.train_step = optimizer.apply_gradients(grads_and_vars_lap)
+            
+            else:
+                self.train_step = optimizer.minimize(
+                    cross_entropy + l2_loss * self.weight_decay)
 
         correct_prediction = tf.equal(
             tf.argmax(prediction, 1),
@@ -461,8 +510,10 @@ class DenseNet:
                 self.is_training: True,
             }
             fetches = [self.train_step, self.cross_entropy, self.accuracy]
+            if self.use_sdr:
+                fetches = self.apply_ + self.sd_asn_ + fetches
             result = self.sess.run(fetches, feed_dict=feed_dict)
-            _, loss, accuracy = result
+            _, loss, accuracy = result[-3:]
             total_loss.append(loss)
             total_accuracy.append(accuracy)
             if self.should_save_logs:
