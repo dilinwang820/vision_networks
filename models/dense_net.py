@@ -102,6 +102,8 @@ class DenseNet:
 
         # restrict model GPU memory utilization to min required
         config.gpu_options.allow_growth = True
+        config.device_count={'GPU': 4}
+
         self.sess = tf.Session(config=config)
         tf_ver = int(tf.__version__.split('.')[1])
         if TF_VERSION <= 0.10:
