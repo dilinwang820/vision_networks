@@ -81,6 +81,8 @@ class DenseNet:
         self.renew_logs = renew_logs
         self.batches_step = 0
 
+        self.use_lap = kwargs['use_lap']
+        self.zeta = 0.001
         self._define_inputs()
         self._build_graph()
         self._initialize_session()
@@ -352,6 +354,7 @@ class DenseNet:
         prediction = tf.nn.softmax(logits)
 
         # Losses
+
         cross_entropy = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(
             logits=logits, labels=self.labels))
         self.cross_entropy = cross_entropy
@@ -361,8 +364,34 @@ class DenseNet:
         # optimizer and train step
         optimizer = tf.train.MomentumOptimizer(
             self.learning_rate, self.nesterov_momentum, use_nesterov=True)
-        self.train_step = optimizer.minimize(
-            cross_entropy + l2_loss * self.weight_decay)
+
+        if self.use_lap:
+            grads_and_vars = self.optimizer.compute_gradients(
+                cross_entropy + l2_loss * self.weight_decay)
+
+            vars_with_grad = [v for g, v in grads_and_vars if g is not None]
+            if not vars_with_grad:
+              raise ValueError(
+                "No gradients provided for any variable, check your graph for ops"
+                " that do not support gradients, between variables %s and loss %s." %
+                ([str(v) for _, v in grads_and_vars], l2_loss))
+
+            grads_and_vars_lap = []
+            with tf.variable_scope('m_lap'):
+                for k, (g, v) in enumerate(grads_and_vars):
+
+                    noise = tf.random_normal(shape=g.get_shape(), mean=0.0, stddev=1.0)
+                    g_lap = g + self.zeta * tf.abs(g) * noise
+                    grads_and_vars_lap.append((g_lap, v))
+
+                #for var in tf.trainable_variables():
+                #    tf.summary.histogram('post_lap_weights_' + var.name, var)
+
+            self.train_step = self.optimizer.apply_gradients(grads_and_vars_lap)
+        
+        else:
+            self.train_step = optimizer.minimize(
+                cross_entropy + l2_loss * self.weight_decay)
 
         correct_prediction = tf.equal(
             tf.argmax(prediction, 1),
