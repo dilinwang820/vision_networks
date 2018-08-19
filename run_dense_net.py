@@ -4,7 +4,7 @@ from models.dense_net import DenseNet
 from data_providers.utils import get_data_provider_by_name
 
 train_params_cifar = {
-    'batch_size': 64,
+    'batch_size': 100,
     'n_epochs': 300,
     'initial_learning_rate': 0.1,
     'reduce_lr_epoch_1': 150,  # epochs * 0.5
@@ -16,7 +16,7 @@ train_params_cifar = {
 }
 
 train_params_svhn = {
-    'batch_size': 64,
+    'batch_size': 100,
     'n_epochs': 40,
     'initial_learning_rate': 0.1,
     'reduce_lr_epoch_1': 20,
@@ -113,15 +113,10 @@ if __name__ == '__main__':
         help='number of intra threads for inference / test')
 
     parser.add_argument(
-        '--lap', dest='use_lap', action='store_true',
-        help='Use Lap approx instead of dropout.')
-
-    parser.add_argument(
         '--sdr', dest='use_sdr', action='store_true',
         help='Use Stochastic Delta Rule instead of dropout.')
 
     parser.set_defaults(renew_logs=True)
-    parser.set_defaults(use_lap=False)
     parser.set_defaults(use_sdr=False)
 
     args = parser.parse_args()
@@ -132,7 +127,7 @@ if __name__ == '__main__':
         else:
             args.keep_prob = 1.0
 
-    if args.use_lap or args.use_sdr:
+    if args.use_sdr:
         args.keep_prob = 1.0
 
     if args.model_type == 'DenseNet':

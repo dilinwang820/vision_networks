@@ -81,10 +81,8 @@ class DenseNet:
         self.renew_logs = renew_logs
         self.batches_step = 0
 
-        self.use_lap = kwargs['use_lap']
         self.use_sdr = kwargs['use_sdr']
         self.gpu = int(kwargs['gpu'])
-        assert not (self.use_lap and self.use_sdr), 'illegal inputs use_lap or use_sdr'
         self.beta, self.zeta = 0.1, 0.01
         self.data_dir = '/data/dilin/densenet'
         self.alpha = 0.001
@@ -158,9 +156,6 @@ class DenseNet:
 
         if self.use_sdr:
             return "SDR_{}_growth_rate={}_depth={}_dataset_{}".format(
-                self.model_type, self.growth_rate, self.depth, self.dataset_name)
-        elif self.use_lap:
-            return "LAP_{}_growth_rate={}_depth={}_dataset_{}".format(
                 self.model_type, self.growth_rate, self.depth, self.dataset_name)
         else:
             return "ORI_{}_growth_rate={}_depth={}_dataset_{}".format(
@@ -432,26 +427,7 @@ class DenseNet:
             optimizer = tf.train.MomentumOptimizer(
                 self.learning_rate, self.nesterov_momentum, use_nesterov=True)
 
-
-            if self.use_lap:
-                grads_and_vars = optimizer.compute_gradients(
-                    cross_entropy + l2_loss * self.weight_decay)
-
-                grads_and_vars_lap = []
-                with tf.variable_scope('m_lap'):
-                    for k, (g, v) in enumerate(grads_and_vars):
-
-                        noise = tf.random_normal(shape=g.get_shape(), mean=0.0, stddev=1.0)
-                        g_lap = g + self.alpha * tf.abs(g) * noise
-                        grads_and_vars_lap.append((g_lap, v))
-
-                    #for var in tf.trainable_variables():
-                    #    tf.summary.histogram('post_lap_weights_' + var.name, var)
-
-                self.train_step = optimizer.apply_gradients(grads_and_vars_lap)
-            
-            else:
-                self.train_step = optimizer.minimize(
+            self.train_step = optimizer.minimize(
                     cross_entropy + l2_loss * self.weight_decay)
 
         correct_prediction = tf.equal(
