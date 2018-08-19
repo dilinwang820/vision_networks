@@ -84,8 +84,8 @@ class DenseNet:
         self.use_sdr = kwargs['use_sdr']
         self.gpu = int(kwargs['gpu'])
         self.beta, self.zeta = 0.1, 0.01
-        self.data_dir = '/data/dilin/densenet'
-        self.alpha = 0.001
+        #self.data_dir = '/data/dilin/densenet'
+        self.data_dir = None
         self._define_inputs()
         self._build_graph()
         self._initialize_session()
